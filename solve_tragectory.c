@@ -4,8 +4,8 @@
 
 #define GRAVITY 9.8
 #define MAX_ITERATE_COUNT 30
-#define ITERATE_SCALE_FACTOR 0.3
-#define PRECISION 0.0001
+#define ITERATE_SCALE_FACTOR 0.9
+#define PRECISION 0.000001
 
 
 //接口适配
@@ -28,6 +28,7 @@ typedef struct
 
 /**
  * @brief 计算子弹落点
+ * @author yuanluochen
  * 
  * @param solve_trajectory 弹道计算结构体
  * @param x 水平距离
@@ -35,23 +36,24 @@ typedef struct
  * @param pitch 仰角
  * @return 子弹落点
  */
-static float calc_bullet_drop(solve_trajectory_t* solve_trajectory, float x, float bullet_speed, float pitch)
+static float calc_bullet_drop(solve_trajectory_t* solve_trajectory, float x, float bullet_speed, float theta)
 {
-    solve_trajectory->flight_time = (float)((exp(solve_trajectory->k1 * x) - 1) / (solve_trajectory->k1 * bullet_speed * cos(pitch)));
+    solve_trajectory->flight_time = (float)((exp(solve_trajectory->k1 * x) - 1) / (solve_trajectory->k1 * bullet_speed * cos(theta)));
 
-    printf("x:= %f, theta:=%f, t:=%f", x, pitch, solve_trajectory->flight_time);
+    printf("x:= %f, theta:=%f, t:=%f", x, theta, solve_trajectory->flight_time);
     //计算子弹落点高度
-    fp32 bullet_drop_z = (float)(bullet_speed * sin(pitch) * solve_trajectory->flight_time - 0.5f * GRAVITY * pow(solve_trajectory->flight_time, 2));
+    fp32 bullet_drop_z = (float)(bullet_speed * sin(theta) * solve_trajectory->flight_time - 0.5f * GRAVITY * pow(solve_trajectory->flight_time, 2));
     return bullet_drop_z;
 }
 
 /**
  * @brief 计算弹道落点 -- 完全空气阻力模型 该模型适用于大仰角击打的击打
+ * @author yuanluochen
  * 
  * @param solve_trajectory 弹道解算结构体
  * @param x 距离
  * @param bullet_speed 弹速
- * @param pitch 仰角
+ * @param theta 仰角
  * @return 弹道落点
  */
 static float calc_bullet_drop_in_complete_air(solve_trajectory_t* solve_trajectory, float x, float bullet_speed, float theta)
@@ -60,10 +62,9 @@ static float calc_bullet_drop_in_complete_air(solve_trajectory_t* solve_trajecto
     fp32 bullet_drop_z = 0;
     //计算总飞行时间
     solve_trajectory->flight_time = (float)((exp(solve_trajectory->k1 * x) - 1) / (solve_trajectory->k1 * bullet_speed * cos(theta)));
-    printf("飞行时间%f", solve_trajectory->flight_time);
+    // printf("飞行时间%f", solve_trajectory->flight_time);
     if (theta > 0) 
     {
-        printf("da\n");
         //补偿空气阻力系数 对竖直方向
         //上升过程中 子弹速度方向向量的角度逐渐趋近于0，竖直空气阻力 hat(f_z) = f_z * sin(theta) 会趋近于零 ，水平空气阻力 hat(f_x) = f_x * cos(theta) 会趋近于 f_x ，所以要对竖直空气阻力系数进行补偿
         fp32 k_z = solve_trajectory->k1 * (1 / sin(theta));
@@ -98,6 +99,7 @@ static float calc_bullet_drop_in_complete_air(solve_trajectory_t* solve_trajecto
 
 /**
  * @brief 二维平面弹道模型，计算pitch轴的仰角，
+ * @author yuanluochen
  *
  * @param solve_tragectory 弹道计算结构体
  * @param x 水平距离
@@ -140,14 +142,16 @@ static float calc_target_position_pitch_angle(solve_trajectory_t* solve_trajecto
         calc_and_actual_error = z - bullet_drop_z;
         // 对瞄准高度进行补偿
         aim_z += calc_and_actual_error * ITERATE_SCALE_FACTOR;
-        printf("第%d次瞄准，高度为=%f, 仰角=%f, error=%f\n", ++count, aim_z, theta, calc_and_actual_error);
+        // printf("第%d次瞄准，高度为=%f, 仰角=%f, error=%f\n", ++count, aim_z, theta, calc_and_actual_error);
         // printf("第%d次瞄准，发射系x:%f, z补偿%f, z发射系落点%f ,z机体系落点%f\n", count, x - (arm_cos_f32(theta) * x_offset), (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset), bullet_drop_z - (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset), bullet_drop_z);
         // 判断误差是否符合精度要求
+        count++;
         if (fabs(calc_and_actual_error) < PRECISION)
         {
             break;
         }
     }
+    // printf("x = %f, 原始pitch = %f, pitch = %f, 迭代次数 = %d\n", x, -atan2(z, x) * 180 / 3.14 , -(theta * 180 / 3.14), count);
     //由于为右手系，theta为向下为正，所以置负
     return -theta;
 }
@@ -157,6 +161,7 @@ int main(){
     .current_bullet_speed = 25,
     .k1 = 0.01
   };
-  calc_target_position_pitch_angle(&s, 10, -0.2, 0.111, 0);
+  for (float i = 0.5; i < 25; i += 0.1)
+    calc_target_position_pitch_angle(&s, i, -0.2, 0.111, 0);
   return 0;
 }

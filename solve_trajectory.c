@@ -1,30 +1,14 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <math.h>
-
-#define GRAVITY 9.8
-#define MAX_ITERATE_COUNT 30
-#define ITERATE_SCALE_FACTOR 0.9
-#define PRECISION 0.000001
-
-
-//接口适配
-typedef float fp32;
-#define arm_sin_f32 sin
-#define arm_cos_f32 cos
-
-
-//弹道计算结构体
-typedef struct
-{
-    // 当前弹速
-    fp32 current_bullet_speed;
-    // 弹道系数
-    fp32 k1;
-    //子弹飞行时间
-    fp32 flight_time;
-
-} solve_trajectory_t;
+/**
+ * @file solve_trajectory.c
+ * @author yuanluochen
+ * @brief 弹道解算文件
+ * @version 0.1
+ * @date 2025-04-21
+ * 
+ * @copyright Copyright (c) 2025
+ * 
+ */
+#include <solve_trajectory.h>
 
 /**
  * @brief 计算子弹落点
@@ -33,7 +17,7 @@ typedef struct
  * @param solve_trajectory 弹道计算结构体
  * @param x 水平距离
  * @param bullet_speed 弹速
- * @param pitch 仰角
+ * @param theta 仰角
  * @return 子弹落点
  */
 static float calc_bullet_drop(solve_trajectory_t* solve_trajectory, float x, float bullet_speed, float theta)
@@ -107,9 +91,12 @@ static float calc_bullet_drop_in_complete_air(solve_trajectory_t* solve_trajecto
  * @param x_offset 以机器人转轴坐标系为父坐标系，以发射最大速度点为子坐标系的x轴偏移量
  * @param y_offset 以机器人转轴坐标系为父坐标系，以发射最大速度点为子坐标系的y轴偏移量
  * @param bullet_speed 弹速
+ * @param mode 计算模式：
+          置 1 完全空气阻力模型
+          置 0 单方向空气阻力模型
  * @return 返回pitch轴数值
  */
-static float calc_target_position_pitch_angle(solve_trajectory_t* solve_trajectory, fp32 x, fp32 z, fp32 x_offset, fp32 z_offset)
+float calc_target_position_pitch_angle(solve_trajectory_t* solve_trajectory, fp32 x, fp32 z, fp32 x_offset, fp32 z_offset, int mode)
 {
     int count = 0;
     // 计算落点高度
@@ -131,18 +118,29 @@ static float calc_target_position_pitch_angle(solve_trajectory_t* solve_trajecto
         theta = atan2(aim_z, x);
         // 坐标系变换，从机器人转轴系变为发射最大速度位置坐标系
         // 计算子弹落点高度
-        bullet_drop_z =
-        calc_bullet_drop_in_complete_air(
-                solve_trajectory,
-                x - (arm_cos_f32(theta) * x_offset - arm_sin_f32(theta) * z_offset),
-                solve_trajectory->current_bullet_speed, 
-                theta) +
-            (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset);
+        if (mode == 1){
+            bullet_drop_z =
+              calc_bullet_drop_in_complete_air(
+                  solve_trajectory,
+                  x - (arm_cos_f32(theta) * x_offset -
+                       arm_sin_f32(theta) * z_offset),
+                  solve_trajectory->current_bullet_speed, theta) +
+              (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset);
+        }
+        else{
+            bullet_drop_z =
+              calc_bullet_drop(
+                  solve_trajectory,
+                  x - (arm_cos_f32(theta) * x_offset -
+                       arm_sin_f32(theta) * z_offset),
+                  solve_trajectory->current_bullet_speed, theta) +
+              (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset);
+        }
+            
         // 计算误差
         calc_and_actual_error = z - bullet_drop_z;
         // 对瞄准高度进行补偿
         aim_z += calc_and_actual_error * ITERATE_SCALE_FACTOR;
-        // printf("第%d次瞄准，高度为=%f, 仰角=%f, error=%f\n", ++count, aim_z, theta, calc_and_actual_error);
         // printf("第%d次瞄准，发射系x:%f, z补偿%f, z发射系落点%f ,z机体系落点%f\n", count, x - (arm_cos_f32(theta) * x_offset), (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset), bullet_drop_z - (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset), bullet_drop_z);
         // 判断误差是否符合精度要求
         count++;
@@ -151,17 +149,19 @@ static float calc_target_position_pitch_angle(solve_trajectory_t* solve_trajecto
             break;
         }
     }
-    // printf("x = %f, 原始pitch = %f, pitch = %f, 迭代次数 = %d\n", x, -atan2(z, x) * 180 / 3.14 , -(theta * 180 / 3.14), count);
+    printf("x = %f, 原始pitch = %f, pitch = %f, 迭代次数 = %d\n", x, -atan2(z, x) * 180 / 3.14 , -(theta * 180 / 3.14), count);
     //由于为右手系，theta为向下为正，所以置负
     return -theta;
 }
 
+#if DEBUG_IN_COMPUTER
 int main(){
   solve_trajectory_t s = {
     .current_bullet_speed = 25,
     .k1 = 0.01
   };
-  for (float i = 0.5; i < 25; i += 0.1)
-    calc_target_position_pitch_angle(&s, i, -0.2, 0.111, 0);
+  for (float i = 1; i < 5; i += 0.001)
+    calc_target_position_pitch_angle(&s, i, 1, 0.111, 0, 1);
   return 0;
 }
+#endif

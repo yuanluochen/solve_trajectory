@@ -80,6 +80,54 @@ static float calc_bullet_drop_in_complete_air(solve_trajectory_t* solve_trajecto
 
     return bullet_drop_z;
 }
+/**
+ * @brief 四阶龙格库塔法拟合弹道
+ * 
+ * @param solve_trajectory 弹道解算结构体
+ * @param x 距离
+ * @param y 高度
+ * @param bullet_speed 弹速
+ * @param theta 仰角
+ * @return 弹道落点
+ */
+static float calc_bullet_drop_in_RK4(solve_trajectory_t* solve_trajectory, float x, float y, float bullet_speed, float theta){
+    // fp32 pitch_offset = 0.0;
+    // TODO:可以考虑将迭代起点改为世界坐标系下的枪口位置
+    // 初始化
+    fp32 cur_x = x;
+    fp32 cur_y = y;
+    fp32 p = tan(theta / 180 * PI);
+    fp32 v = bullet_speed;
+    fp32 u = v / sqrt(1 + pow(p, 2));
+    fp32 delta_x = x / RK_ITER;
+    for (int j = 0; j < RK_ITER; j++)
+    {
+        fp32 k1_u = -solve_trajectory->k1 * u * sqrt(1 + pow(p, 2));
+        fp32 k1_p = -GRAVITY / pow(u, 2);
+        fp32 k1_u_sum = u + k1_u * (delta_x / 2);
+        fp32 k1_p_sum = p + k1_p * (delta_x / 2);
+
+        fp32 k2_u = -solve_trajectory->k1 * k1_u_sum * sqrt(1 + pow(k1_p_sum, 2));
+        fp32 k2_p = -GRAVITY / pow(k1_u_sum, 2);
+        fp32 k2_u_sum = u + k2_u * (delta_x / 2);
+        fp32 k2_p_sum = p + k2_p * (delta_x / 2);
+
+        fp32 k3_u = -solve_trajectory->k1 * k2_u_sum * sqrt(1 + pow(k2_p_sum, 2));
+        fp32 k3_p = -GRAVITY / pow(k2_u_sum, 2);
+        fp32 k3_u_sum = u + k3_u * (delta_x / 2);
+        fp32 k3_p_sum = p + k3_p * (delta_x / 2);
+
+        fp32 k4_u = -solve_trajectory->k1 * k3_u_sum * sqrt(1 + pow(k3_p_sum, 2));
+        fp32 k4_p = -GRAVITY / pow(k3_u_sum, 2);
+
+        u += (delta_x / 6) * (k1_u + 2 * k2_u + 2 * k3_u + k4_u);
+        p += (delta_x / 6) * (k1_p + 2 * k2_p + 2 * k3_p + k4_p);
+
+        cur_x += delta_x;
+        cur_y += p * delta_x;
+    }
+    return cur_y;
+}
 
 /**
  * @brief 二维平面弹道模型，计算pitch轴的仰角，
@@ -127,6 +175,16 @@ float calc_target_position_pitch_angle(solve_trajectory_t* solve_trajectory, fp3
                   solve_trajectory->current_bullet_speed, theta) +
               (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset);
         }
+        else if (mode == 2){
+            bullet_drop_z =
+              calc_bullet_drop_in_RK4(
+                  solve_trajectory,
+                  x - (arm_cos_f32(theta) * x_offset -
+                       arm_sin_f32(theta) * z_offset),
+                       aim_z - (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset),
+                  solve_trajectory->current_bullet_speed, theta) +
+              (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset);
+        }
         else{
             bullet_drop_z =
               calc_bullet_drop(
@@ -158,10 +216,10 @@ float calc_target_position_pitch_angle(solve_trajectory_t* solve_trajectory, fp3
 int main(){
   solve_trajectory_t s = {
     .current_bullet_speed = 25,
-    .k1 = 0.01
+    .k1 = 0.019
   };
-  for (float i = 1; i < 5; i += 0.001)
-    calc_target_position_pitch_angle(&s, i, 1, 0.111, 0, 1);
+  for (float i = 1; i < 10; i += 0.5)
+    calc_target_position_pitch_angle(&s, i, -0.1, 0.111, 0, 2);
   return 0;
 }
 #endif

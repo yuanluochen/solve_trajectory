@@ -25,6 +25,8 @@ typedef float fp32;
 #endif 
 
 //固定定义
+#define PI 3.14
+#define RK_ITER 60
 #define GRAVITY 9.8
 #define MAX_ITERATE_COUNT 30
 #define ITERATE_SCALE_FACTOR 0.9

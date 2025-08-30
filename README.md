@@ -1,6 +1,8 @@
 # 迭代弹道模型
 
-该仓库参考文章 [RoboMaster OSS 的迭代弹道模型](https://robomaster-oss.github.io/rmoss_tutorials/#/rmoss_core/rmoss_projectile_motion/projectile_motion_iteration)。
+该仓库参考文章 
+1. [RoboMaster OSS 的迭代弹道模型](https://robomaster-oss.github.io/rmoss_tutorials/#/rmoss_core/rmoss_projectile_motion/projectile_motion_iteration)
+2. [沈阳航空航天大学TUP2022年步兵视觉开源](https://github.com/tup-robomaster/TUP-InfantryVision-2022/tree/main/coordsolver)
 
 ## 一、前言
 
@@ -155,3 +157,6 @@ $$
 - **数值求解**：利用一次测试数据，求解参数 $k_1$。参考单方向空气阻力模型 $k$ 迭代求解法。
 - **经验求解**：不断调整 $k_1$，取得相对合适的值。
 - **理论求解**：$k_1 = k_0 / m$；利用物理理论求解空气阻力系数 $k_0$（$f = k_0 v^2$），即可得到 $k_1$。
+
+## 四、RK4——四阶龙库塔法拟合弹道
+待续

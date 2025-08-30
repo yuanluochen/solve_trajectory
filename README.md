@@ -40,7 +40,6 @@ $$
 
 **x方向运动模型推导：**
 
-
 $$
 \begin{aligned}
 \text{空气阻力模型 :  }&f_x=k_0v_x^2 \\
@@ -48,10 +47,9 @@ $$
  &  \Longrightarrow  -\frac{k_0}{m}v_x^2 =\frac{dv_x}{dt} \Rightarrow k_1dt=-\frac{dv_x}{v_x^2} \dots\dots(k_1=\frac{k_0}{m}) \\
  &  \Longrightarrow k_1t+C=\frac{1}{v_x} \\
  &由v_x(t=0)=v_{x0}得：C=\frac{1}{v_{x0}} \\
-
 即得到水平方向速度模型& v_x=\frac{v_{x0}}{k_1v_{x0}t+1} \\
 即得到水平方向位移模型& x=\int^t_0v_xdt=\frac{1}{k_1}\ln(k_1v_{x0}t+1)
-  \end{aligned}
+\end{aligned}
 $$
 
 不难发现，当**阻力系数k1趋近于0**时，该模型**退化**为**理想抛物线模型**
@@ -59,6 +57,7 @@ $$
 $$
 \lim_{k_1\rightarrow0}x=\lim_{k_1\rightarrow0}\frac{\ln(k_1v_{x0}t+1)}{k_1}=\lim_{k_1\rightarrow0}\frac{k_1v_{x0}t}{k_1}=\lim_{k_1\rightarrow0}v_{x0}t=v_{x0}t
 $$
+
 得到**运动模型**后，利用**基于模型前向迭代的数值解法** ，对模型进行迭代求解，步骤同上。
 
 以下是阻力系数k1=0.1时的迭代结果
@@ -104,21 +103,24 @@ $$
 ### a. 模型假设：
 
 有了单方向模型推导的经验，我们依然**假设空气阻力与速度平方成正比** 。
+
 $$
 \begin{aligned}
 \text{空气阻力模型 :  }&f=k_0v^2 \\
 \text{ x方向:  }&f_x=f\cdot cos\theta=k_0v^2 \cdot cos\theta\\
 \text{ y方向:  }&f_y=f\cdot sin\theta=k_0v^2\cdot sin\theta\\
-  \end{aligned}
+\end{aligned}
 $$
+
 显然，fx与fy与子弹飞行的姿态有关，x,y方向运动并不能完全分解，为了简化计算过程，故做以下假设
 
 **空气阻力假设:**
+
 $$
 \begin{aligned}
 \text{ x方向:  }&\hat{f_x}=f_x\cdot cos\theta= k_0v^2\cdot cos^2\theta =k_0v^2_x<f_x\\
 \text{ y方向:  }&\hat{f_y}=f_y\cdot sin\theta= k_0v^2\cdot sin^2\theta =k_0v^2_y<f_y\\
-  \end{aligned}
+\end{aligned}
 $$
 
 有了以上假设，就可以进行运动分解，两个方向单独计算，x方向还是和单方向空气阻力推导过程一样，只需要完成对y方向的模型推导即可。
@@ -131,6 +133,7 @@ $$
 - 且下降过程速度相对较小，优先射击点在上升段，以及下降过程较短等因素
 
 **(1)上升过程：**
+
 $$
 \begin{aligned}
 \text{空气阻力模型 :  }&f_y=k_0v_y^2 \\
@@ -138,30 +141,33 @@ $$
  &  \Longrightarrow  -\frac{k_0}{m}v_y^2-g =\frac{dv_y}{dt} \Rightarrow -dt=\frac{dv_x}{k_1v_x^2+g} \dots\dots(k_1=\frac{k_0}{m}) \\
  &  \Longrightarrow -t+C=\frac{1}{\sqrt{k_1g}} arctan(\sqrt{\frac{k_1}{g}}v_y)\\
  & 由v_y(t=0)=v_{y0}得C=\frac{1}{\sqrt{k_1g}} arctan(\sqrt{\frac{k_1}{g}}v_{y0})\\
-
 即得到竖直方向速度模型& v_y=\sqrt{\frac{g}{k_1}}tan\left(\sqrt{k_1g}({C-t)}\right) \cdots\cdots(t<C)\\
 即得到竖直方向位移模型& y=\int^t_0v_ydt=\frac{1}{k_1} \int^{\sqrt{k_1g}C}_{\sqrt{k_1g}(C-t)}tan(z)dz=\frac{1}{k_1}\cdot \ln{\frac{cos(\sqrt{k_1g}(C-t))}{cos(\sqrt{k_1g}C)}} \cdots(0<t<C)\\
 特别，到达最高点有&y_{max}=\frac{1}{k_1} \cdot\ln{\frac{1}{cos(\sqrt{k_1g}C)}}=\frac{1}{2k_1}\ln(1+\frac{k_1}{g}v^2_{y0})\cdots(t=C)
-  \end{aligned}
+\end{aligned}
 $$
+
 **(2)下降过程：**
+
 $$
 y=-\frac{1}{2}gt^2
 $$
+
 **(3)空气阻力补偿:**
 
 在子弹飞行上升过程中，由于速度角度（速度与水平夹角）是逐渐减少的，趋近于0。
+
 $$
 \begin{aligned}
 速度夹角：&\theta\rightarrow0,则sin\theta\rightarrow0,cos\theta\rightarrow1 \\
 \text{ x方向:  }&\hat{f_x}=f_x\cdot cos\theta \rightarrow f_x\\
 \text{ y方向:  }&\hat{f_y}=f_y\cdot sin\theta  \rightarrow 0\\
 &而且，\theta一般不会太大，大部分情况有：0<\theta<\frac{\pi}{4};
-  \end{aligned}
+\end{aligned}
 $$
 
-
 所以，x方向无需补偿，y方向需要进行空气阻力补偿，以减小模型误差，这里补偿
+
 $$
 \begin{aligned}
 &\text{ y方向:  }\hat{f_y}=f_y\cdot sin\theta\cdot\frac{1}{sin\alpha} \\
@@ -169,6 +175,7 @@ $$
 &\hat{k_1}=k_1*\frac{1}{sin\alpha} (\alpha>0)
 \end{aligned}
 $$
+
 即，对y方向，进行空气阻力系数补偿。
 
 **k1求解方式：**

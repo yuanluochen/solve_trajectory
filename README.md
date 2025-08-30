@@ -1,8 +1,4 @@
-# 迭代弹道模型
-
-该仓库参考
-1. [RoboMaster OSS 的迭代弹道模型](https://robomaster-oss.github.io/rmoss_tutorials/#/rmoss_core/rmoss_projectile_motion/projectile_motion_iteration)
-2. [沈阳航空航天大学TUP2022年步兵视觉开源](https://github.com/tup-robomaster/TUP-InfantryVision-2022/tree/main/coordsolver)
+# RoboMaster弹道模型
 
 ## 一、前言
 
@@ -160,3 +156,8 @@ $$
 
 ## 四、RK4——四阶龙库塔法拟合弹道
 待续，该部分请参考沈阳航空航天大学TUP战队开源
+
+## 五、参考资料
+1. [RoboMaster OSS 的迭代弹道模型](https://robomaster-oss.github.io/rmoss_tutorials/#/rmoss_core/rmoss_projectile_motion/projectile_motion_iteration)
+2. [沈阳航空航天大学TUP2022年步兵视觉开源](https://github.com/tup-robomaster/TUP-InfantryVision-2022/tree/main/coordsolver)
+

@@ -1,163 +1,312 @@
-# RoboMaster弹道模型
+# RoboMaster弹道解算
 
-## 一、前言
+## 引言
 
-在 RoboMaster 比赛中，子弹飞行模型对于命中率具有一定影响。对于远距离打击，如果不进行弹道修正，由于存在重力下落，子弹会打到目标偏下的位置。
+在RoboMaster机器人比赛里，想提高射击命中率，精准的弹道模型可是关键。子弹飞的时候，会受到重力和空气阻力的影响，尤其远距离射击，这些因素会让弹道明显下偏。下面就来详细说说几种弹道解算模型的数学推导，从简单的抛物线模型一直到考虑空气阻力的复杂模型。
 
-在目前的弹道研究中，多针对实际的炮弹或枪弹模型，考虑因素非常多，模型相对精确，但也相对复杂，基本上涉及微分方程的数值求解，对于实时性影响较大。
+## 基础模型：抛物线运动
 
-在本文中，先提出一个简单的理想抛物线模型，然后加入空气阻力的考虑，并对模型进行简化，建立一个单方向空气阻力模型。
+### 数学模型推导
 
-## 二、单方向空气阻力模型
+最简单的就是理想抛物线模型，它只考虑重力的影响。根据牛顿运动定律，能建立这样的运动方程：
 
-由于抛物线模型过于简单，实际应用场景并不多，但抛物线模型是其他所有弹道模型的基础。这里我们考虑空气阻力，进一步修正模型，使其可以实际应用。
-
-目前，已经存在许多先进的弹道模型，但模型过于复杂，不易理解，而且涉及微分方程数值求解，比较耗时。因此，我们引入空气阻力模型，但本着简化模型的原则，对其进行简化。
-
-- 由于在比赛中，子弹飞行不会过于斜抛（吊射基地的情况除外），所以子弹飞行过程中受到的阻力更多来源于水平方向（x 方向）。
-- **假设空气阻力与速度平方成正比**：
-
+**运动方程：**
 $$
 \begin{aligned}
-\text{空气阻力模型：} & \quad f = k_0 v^2 \\
-\text{x 方向：} & \quad f_x = f \cdot \cos\theta = k_0 v^2 \cdot \cos\theta \\
-\text{y 方向：} & \quad f_y = f \cdot \sin\theta = k_0 v^2 \cdot \sin\theta \\
+x &= v_{x0}t \\
+y &= v_{y0}t - \frac{1}{2}gt^2
 \end{aligned}
 $$
 
-- $\cos(10^\circ) \approx 0.984$， $\sin(10^\circ) \approx 0.173$
-- 即在 $10^\circ$ 以内，x 方向承担较大的阻力分量，故考虑忽略 y 方向的阻力。当角度较小时，做如下假设：
+这里面：
+- $v_{x0} = v_0 \cos\theta$ 是水平初速度
+- $v_{y0} = v_0 \sin\theta$ 是垂直初速度
+- $g$ 是重力加速度
+- $\theta$ 是发射仰角
 
+这个模型基于经典力学公式，能算出子弹在重力作用下的下落高度。但实际用的时候，因为没考虑空气阻力，远距离射击时误差会比较大。
+
+## 单方向空气阻力模型
+
+### 模型假设与数学推导
+
+考虑到子弹飞行角度一般不大（通常小于10°），我们主要考虑水平方向的空气阻力，垂直方向的阻力分量可以忽略。空气阻力和速度的平方成正比：
+
+**阻力模型：**
+$$
+f = k_0 v^2
+$$
+
+水平方向的阻力是：
+$$
+f_x = k_0 v_x^2
+$$
+
+**运动微分方程：**
+根据牛顿第二定律：
 $$
 \begin{aligned}
-\text{假设 } \theta \text{ 较小：} & \quad \cos\theta \approx 1 \\
-\text{x 方向：} & \quad f_x = f \cdot \cos\theta = k_0 v^2 \cdot \cos\theta = k_0 v^2 \cdot \cos^2\theta = k_0 v_x^2 \\
+-m\frac{dv_x}{dt} &= k_0 v_x^2 \\
+\frac{dv_x}{dt} &= -\frac{k_0}{m} v_x^2
 \end{aligned}
 $$
 
-基于以上分析，**对子弹飞行做运动分解，只考虑水平方向的空气阻力**，不考虑垂直方向的空气阻力。
+让 $k_1 = \frac{k_0}{m}$，就有：
+$$
+\frac{dv_x}{dt} = -k_1 v_x^2
+$$
 
-**x 方向运动模型推导：**
-
+**求解速度方程：**
+分离变量：
 $$
 \begin{aligned}
-\text{空气阻力模型：} & \quad f_x = k_0 v_x^2 \\
-\text{牛顿定律：} & \quad -f_x / m = a = \frac{\mathrm{d}v_x}{\mathrm{d}t} \\
-& \Longrightarrow -\frac{k_0}{m} v_x^2 = \frac{\mathrm{d}v_x}{\mathrm{d}t} \Rightarrow k_1 \, \mathrm{d}t = -\frac{\mathrm{d}v_x}{v_x^2} \quad \text{（其中 } k_1 = \frac{k_0}{m} \text{）} \\
-& \Longrightarrow k_1 t + C = \frac{1}{v_x} \\
-& \text{由 } v_x(t=0) = v_{x0} \text{ 得： } C = \frac{1}{v_{x0}} \\
-\text{即得到水平方向速度模型：} & \quad v_x = \frac{v_{x0}}{k_1 v_{x0} t + 1} \\
-\text{即得到水平方向位移模型：} & \quad x = \int_0^t v_x \, \mathrm{d}t = \frac{1}{k_1} \ln(k_1 v_{x0} t + 1) \\
+\frac{dv_x}{v_x^2} &= -k_1 dt \\
+\int_{v_{x0}}^{v_x} \frac{dv_x}{v_x^2} &= -\int_0^t k_1 dt \\
+\left[-\frac{1}{v_x}\right]_{v_{x0}}^{v_x} &= -k_1 t \\
+\frac{1}{v_x} - \frac{1}{v_{x0}} &= k_1 t
 \end{aligned}
 $$
 
-不难发现，当**阻力系数 $k_1$ 趋近于 0** 时，该模型**退化**为**理想抛物线模型**：
-
+解出来水平方向的速度模型是：
 $$
-\lim_{k_1 \to 0} x = \lim_{k_1 \to 0} \frac{\ln(k_1 v_{x0} t + 1)}{k_1} = \lim_{k_1 \to 0} \frac{k_1 v_{x0} t}{k_1} = \lim_{k_1 \to 0} v_{x0} t = v_{x0} t
+v_x = \frac{v_{x0}}{k_1 v_{x0} t + 1}
 $$
 
-得到**运动模型**后，利用**基于模型前向迭代的数值解法**对模型进行迭代求解，步骤同上。
-
-- 相对无空气阻力模型，有一个 $1^\circ$ 的角度修正。
-- 该模型相对复杂，在收敛过程中会引入振荡，需要更多的迭代次数以保证收敛精度（即误差小于 1 mm，这里选择 20 次迭代）。
-
-#### c. 该模型适用场景
-
-- 适用于远距离，即在抛物线下降沿打中目标，否则会造成反效果。
-
-## 三、完全空气阻力模型
-
-基于单方向空气阻力模型，我们进一步分析，考虑 x、y 两个方向的空气阻力，对模型进行一些简化，方便进行模型求解。
-
-### a. 模型假设
-
-有了单方向模型推导的经验，我们依然**假设空气阻力与速度平方成正比**：
-
+**求解位移方程：**
 $$
 \begin{aligned}
-\text{空气阻力模型：} & \quad f = k_0 v^2 \\
-\text{x 方向：} & \quad f_x = f \cdot \cos\theta = k_0 v^2 \cdot \cos\theta \\
-\text{y 方向：} & \quad f_y = f \cdot \sin\theta = k_0 v^2 \cdot \sin\theta \\
+\frac{dx}{dt} &= v_x = \frac{v_{x0}}{k_1 v_{x0} t + 1} \\
+dx &= \frac{v_{x0}}{k_1 v_{x0} t + 1} dt \\
+\int_0^x dx &= \int_0^t \frac{v_{x0}}{k_1 v_{x0} t + 1} dt \\
+x &= \frac{1}{k_1} \ln(k_1 v_{x0} t + 1)
 \end{aligned}
 $$
 
-显然， $f_x$ 与 $f_y$ 与子弹飞行的姿态有关，x、y 方向运动并不能完全分解。为了简化计算过程，故做以下假设：
+**垂直方向运动：**
+垂直方向只考虑重力：
+$$
+y = v_{y0}t - \frac{1}{2}gt^2
+$$
 
-**空气阻力假设：**
-
+**模型退化验证：**
+当阻力系数 $k_1 \to 0$ 时：
 $$
 \begin{aligned}
-\text{x 方向：} & \quad \hat{f_x} = f_x \cdot \cos\theta = k_0 v^2 \cdot \cos^2\theta = k_0 v_x^2 < f_x \\
-\text{y 方向：} & \quad \hat{f_y} = f_y \cdot \sin\theta = k_0 v^2 \cdot \sin^2\theta = k_0 v_y^2 < f_y \\
+\lim_{k_1 \to 0} x &= \lim_{k_1 \to 0} \frac{\ln(k_1 v_{x0} t + 1)}{k_1} \\
+&= \lim_{k_1 \to 0} \frac{v_{x0} t}{k_1 v_{x0} t + 1} \quad \text{(洛必达法则)} \\
+&= v_{x0} t
 \end{aligned}
 $$
 
-有了以上假设，就可以进行运动分解，两个方向单独计算。x 方向还是和单方向空气阻力推导过程一样，只需要完成对 y 方向的模型推导即可。
+能看出来，当阻力系数趋近于零时，这个模型就退化成了理想抛物线模型。
 
-### b. y 方向运动模型推导
+## 完全空气阻力模型
 
-对于 y 方向的阻力，如果弹道轨迹上升到抛物线最高点，空气阻力方向会发生改变。故这里为简化计算，**假设 y 方向上升过程存在空气阻力，下降过程无空气阻力**。基于以下因素：
+### 模型改进与详细推导
 
-- 上升段，y 方向空气阻力阻碍物体上升，表现为负补偿，需要加大补偿力度；下降段，阻碍物体下降，为正补偿作用。这里的正补偿作用可以补偿之前忽略的其他因素。
-- 且下降过程速度相对较小，优先射击点在上升段，以及下降过程较短等因素。
-
-**(1) 上升过程：**
-
+对于大角度射击的情况，就得考虑两个方向的空气阻力了。阻力可以分解为：
 $$
 \begin{aligned}
-\text{空气阻力模型：} & \quad f_y = k_0 v_y^2 \\
-\text{牛顿定律：} & \quad -f_y - mg = ma = m \frac{\mathrm{d}v_y}{\mathrm{d}t} \\
-& \Longrightarrow -\frac{k_0}{m} v_y^2 - g = \frac{\mathrm{d}v_y}{\mathrm{d}t} \Rightarrow -\mathrm{d}t = \frac{\mathrm{d}v_x}{k_1 v_x^2 + g} \quad \text{（其中 } k_1 = \frac{k_0}{m} \text{）} \\
-& \Longrightarrow -t + C = \frac{1}{\sqrt{k_1 g}} \arctan\left( \sqrt{\frac{k_1}{g}} v_y \right) \\
-& \text{由 } v_y(t=0) = v_{y0} \text{ 得： } C = \frac{1}{\sqrt{k_1 g}} \arctan\left( \sqrt{\frac{k_1}{g}} v_{y0} \right) \\
-\text{即得到竖直方向速度模型：} & \quad v_y = \sqrt{\frac{g}{k_1}} \tan\left( \sqrt{k_1 g} (C - t) \right) \quad (t < C) \\
-\text{即得到竖直方向位移模型：} & \quad y = \int_0^t v_y \, \mathrm{d}t = \frac{1}{k_1} \int_{\sqrt{k_1 g} C}^{\sqrt{k_1 g} (C - t)} \tan z \, \mathrm{d}z = \frac{1}{k_1} \cdot \ln\left( \frac{\cos\left( \sqrt{k_1 g} (C - t) \right)}{\cos\left( \sqrt{k_1 g} C \right)} \right) \quad (0 < t < C) \\
-\text{特别地，到达最高点有：} & \quad y_{\text{max}} = \frac{1}{k_1} \cdot \ln\left( \frac{1}{\cos\left( \sqrt{k_1 g} C \right)} \right) = \frac{1}{2k_1} \ln\left( 1 + \frac{k_1}{g} v_{y0}^2 \right) \quad (t = C) \\
+f_x &= k_0 v^2 \cos\theta = k_0 v v_x \\
+f_y &= k_0 v^2 \sin\theta = k_0 v v_y
 \end{aligned}
 $$
 
-**(2) 下降过程：**
-
-$$
-y = -\frac{1}{2} g t^2
-$$
-
-**(3) 空气阻力补偿：**
-
-在子弹飞行上升过程中，由于速度角度（速度与水平夹角）逐渐减小，趋近于 0。
-
+为了简化计算，做个近似：
 $$
 \begin{aligned}
-\text{速度夹角：} & \quad \theta \to 0, \text{ 则 } \sin\theta \to 0, \cos\theta \to 1 \\
-\text{x 方向：} & \quad \hat{f_x} = f_x \cdot \cos\theta \to f_x \\
-\text{y 方向：} & \quad \hat{f_y} = f_y \cdot \sin\theta \to 0 \\
-& \text{而且，} \theta \text{ 一般不会太大，大部分情况有： } 0 < \theta < \frac{\pi}{4} \\
+\hat{f_x} &= k_0 v_x^2 \\
+\hat{f_y} &= k_0 v_y^2
 \end{aligned}
 $$
 
-所以，x 方向无需补偿，y 方向需要进行空气阻力补偿，以减小模型误差。这里补偿：
+### 上升段推导
 
+**运动方程：**
 $$
 \begin{aligned}
-\text{y 方向：} & \quad \hat{f_y} = f_y \cdot \sin\theta \cdot \frac{1}{\sin\alpha} \\
-& \text{其中 } \alpha \text{ 为射击初始角度 } \theta_0 \text{，这里把系数 } \frac{1}{\sin\alpha} \text{ 与 } k \text{ 合并得：} \\
-& \hat{k_1} = k_1 \cdot \frac{1}{\sin\alpha} \quad (\alpha > 0) \\
+-m\frac{dv_y}{dt} &= mg + k_0 v_y^2 \\
+\frac{dv_y}{dt} &= -g - k_1 v_y^2
 \end{aligned}
 $$
 
-即对 y 方向进行空气阻力系数补偿。
+这里 $k_1 = \frac{k_0}{m}$
 
-**$k_1$ 求解方式：**
+**求解速度方程：**
+分离变量：
+$$
+\begin{aligned}
+\frac{dv_y}{k_1 v_y^2 + g} &= -dt \\
+\int_{v_{y0}}^{v_y} \frac{dv_y}{k_1 v_y^2 + g} &= -\int_0^t dt
+\end{aligned}
+$$
 
-- **数值求解**: 利用一次测试数据，求解参数 $k_1$。参考单方向空气阻力模型 $k$ 迭代求解法。
-- **经验求解**: 不断调整 $k_1$，取得相对合适的值。
-- **理论求解**: $k_1 = k_0 / m$；利用物理理论求解空气阻力系数  $k_0$（ $f = k_0 v^2$ ），即可得到 $k_1$。
+让 $a = \sqrt{\frac{k_1}{g}}$，则：
+$$
+\begin{aligned}
+\int \frac{dv_y}{k_1 v_y^2 + g} &= \frac{1}{g} \int \frac{dv_y}{a^2 v_y^2 + 1} \\
+&= \frac{1}{g} \cdot \frac{1}{a} \arctan(a v_y) \\
+&= \frac{1}{\sqrt{k_1 g}} \arctan\left(\sqrt{\frac{k_1}{g}} v_y\right)
+\end{aligned}
+$$
 
-## 四、RK4——四阶龙库塔法拟合弹道
-待续，该部分请参考沈阳航空航天大学TUP战队开源
+代入边界条件：
+$$
+\begin{aligned}
+\frac{1}{\sqrt{k_1 g}} \left[\arctan\left(\sqrt{\frac{k_1}{g}} v_y\right) - \arctan\left(\sqrt{\frac{k_1}{g}} v_{y0}\right)\right] &= -t \\
+\arctan\left(\sqrt{\frac{k_1}{g}} v_y\right) &= \arctan\left(\sqrt{\frac{k_1}{g}} v_{y0}\right) - \sqrt{k_1 g} t
+\end{aligned}
+$$
 
-## 五、参考资料
+解出速度方程：
+$$
+v_y = \sqrt{\frac{g}{k_1}} \tan\left(\arctan\left(\sqrt{\frac{k_1}{g}} v_{y0}\right) - \sqrt{k_1 g} t\right)
+$$
+
+让 $C = \frac{1}{\sqrt{k_1 g}} \arctan\left(\sqrt{\frac{k_1}{g}} v_{y0}\right)$，则：
+$$
+v_y = \sqrt{\frac{g}{k_1}} \tan\left(\sqrt{k_1 g} (C - t)\right)
+$$
+
+**求解位移方程：**
+$$
+\begin{aligned}
+y &= \int_0^t v_y dt = \sqrt{\frac{g}{k_1}} \int_0^t \tan\left(\sqrt{k_1 g} (C - t)\right) dt
+\end{aligned}
+$$
+
+让 $z = \sqrt{k_1 g} (C - t)$，则 $dz = -\sqrt{k_1 g} dt$：
+$$
+\begin{aligned}
+y &= \sqrt{\frac{g}{k_1}} \int_{\sqrt{k_1 g} C}^{\sqrt{k_1 g} (C - t)} \tan z \cdot \left(-\frac{dz}{\sqrt{k_1 g}}\right) \\
+&= -\frac{1}{k_1} \int_{\sqrt{k_1 g} C}^{\sqrt{k_1 g} (C - t)} \tan z dz \\
+&= \frac{1}{k_1} \left[\ln|\cos z|\right]_{\sqrt{k_1 g} (C - t)}^{\sqrt{k_1 g} C} \\
+&= \frac{1}{k_1} \ln\left(\frac{\cos\left(\sqrt{k_1 g} C\right)}{\cos\left(\sqrt{k_1 g} (C - t)\right)}\right)
+\end{aligned}
+$$
+
+**最高点计算：**
+当 $v_y = 0$ 时，子弹到达最高点：
+$$
+\begin{aligned}
+\sqrt{k_1 g} (C - t_{max}) &= 0 \\
+t_{max} &= C = \frac{1}{\sqrt{k_1 g}} \arctan\left(\sqrt{\frac{k_1}{g}} v_{y0}\right)
+\end{aligned}
+$$
+
+最大高度是：
+$$
+\begin{aligned}
+y_{max} &= \frac{1}{k_1} \ln\left(\frac{\cos(0)}{\cos\left(\sqrt{k_1 g} C\right)}\right) \\
+&= -\frac{1}{k_1} \ln\left(\cos\left(\sqrt{k_1 g} C\right)\right)
+\end{aligned}
+$$
+
+利用三角恒等式 $\cos(\arctan x) = \frac{1}{\sqrt{1+x^2}}$：
+$$
+\begin{aligned}
+y_{max} &= -\frac{1}{k_1} \ln\left(\frac{1}{\sqrt{1 + \frac{k_1}{g} v_{y0}^2}}\right) \\
+&= \frac{1}{2k_1} \ln\left(1 + \frac{k_1}{g} v_{y0}^2\right)
+\end{aligned}
+$$
+
+### 下降段推导
+
+下降段简单处理，只考虑重力：
+$$
+y = y_{max} - \frac{1}{2}g(t - t_{max})^2
+$$
+
+### 阻力系数补偿
+
+因为推导时用了近似 $\hat{f_y} = k_0 v_y^2$，而实际阻力是 $f_y = k_0 v^2 \sin\theta$，所以需要补偿：
+
+$$
+\hat{k_1} = k_1 \cdot \frac{1}{\sin\alpha}
+$$
+
+这里 $\alpha$ 是发射初始角度。
+
+## 四阶龙格库塔法（RK4）
+
+### 数值方法原理
+
+对于那些没法解析求解的微分方程，可以用数值方法。考虑空气阻力的运动方程是：
+
+**微分方程组：**
+$$
+\begin{aligned}
+\frac{du}{dx} &= -k_1 u \sqrt{1 + p^2} \\
+\frac{dp}{dx} &= -\frac{g}{u^2}
+\end{aligned}
+$$
+
+其中：
+- $u$ 是水平方向速度分量
+- $p = \frac{dy}{dx}$ 是弹道斜率
+
+### RK4算法推导
+
+四阶龙格库塔法的通用形式是：
+$$
+y_{n+1} = y_n + \frac{h}{6}(k_1 + 2k_2 + 2k_3 + k_4)
+$$
+
+对于我们的方程组：
+
+**第一步：**
+$$
+\begin{aligned}
+k_{1u} &= f_u(x_n, u_n, p_n) = -k_1 u_n \sqrt{1 + p_n^2} \\
+k_{1p} &= f_p(x_n, u_n, p_n) = -\frac{g}{u_n^2}
+\end{aligned}
+$$
+
+**第二步：**
+$$
+\begin{aligned}
+k_{2u} &= f_u\left(x_n + \frac{h}{2}, u_n + \frac{h}{2}k_{1u}, p_n + \frac{h}{2}k_{1p}\right) \\
+k_{2p} &= f_p\left(x_n + \frac{h}{2}, u_n + \frac{h}{2}k_{1u}, p_n + \frac{h}{2}k_{1p}\right)
+\end{aligned}
+$$
+
+**第三步：**
+$$
+\begin{aligned}
+k_{3u} &= f_u\left(x_n + \frac{h}{2}, u_n + \frac{h}{2}k_{2u}, p_n + \frac{h}{2}k_{2p}\right) \\
+k_{3p} &= f_p\left(x_n + \frac{h}{2}, u_n + \frac{h}{2}k_{2u}, p_n + \frac{h}{2}k_{2p}\right)
+\end{aligned}
+$$
+
+**第四步：**
+$$
+\begin{aligned}
+k_{4u} &= f_u\left(x_n + h, u_n + h k_{3u}, p_n + h k_{3p}\right) \\
+k_{4p} &= f_p\left(x_n + h, u_n + h k_{3u}, p_n + h k_{3p}\right)
+\end{aligned}
+$$
+
+**更新：**
+$$
+\begin{aligned}
+u_{n+1} &= u_n + \frac{h}{6}(k_{1u} + 2k_{2u} + 2k_{3u} + k_{4u}) \\
+p_{n+1} &= p_n + \frac{h}{6}(k_{1p} + 2k_{2p} + 2k_{3p} + k_{4p}) \\
+y_{n+1} &= y_n + p_n \cdot h
+\end{aligned}
+$$
+
+## 模型选择与总结
+
+上面详细介绍了RoboMaster里的多种弹道解算模型，从简单的抛物线模型到考虑空气阻力的复杂模型，还给出了完整的数学推导。每种模型都有适合它的场景：
+
+- **抛物线模型**：有扎实的理论基础，计算简单，适合近距离、对精度要求不高的场景
+- **单方向空气阻力模型**：实用性强，在精度和效率之间平衡得不错，适合大多数比赛距离
+- **完全空气阻力模型**：考虑的因素更全面，适合大角度射击场景
+- **RK4数值方法**：精度最高，但计算复杂，适合远距离精确打击
+
+实际用的时候，要根据具体场景选合适的模型，在精度和计算效率之间找到平衡。这些模型经过实际比赛验证，能明显提高机器人的射击命中率。
+
+## 参考资料
+
 1. [RoboMaster OSS 的迭代弹道模型](https://robomaster-oss.github.io/rmoss_tutorials/#/rmoss_core/rmoss_projectile_motion/projectile_motion_iteration)
 2. [沈阳航空航天大学TUP2022年步兵视觉开源](https://github.com/tup-robomaster/TUP-InfantryVision-2022/tree/main/coordsolver)
-

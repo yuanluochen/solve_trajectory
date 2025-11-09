@@ -29,12 +29,20 @@ static float calc_bullet_drop(solve_trajectory_t* solve_trajectory, float x, flo
 {
     solve_trajectory->flight_time = (float)((exp(solve_trajectory->k1 * x) - 1) / (solve_trajectory->k1 * bullet_speed * cos(theta)));
 
-    printf("x:= %f, theta:=%f, t:=%f", x, theta, solve_trajectory->flight_time);
+    // printf("x:= %f, theta:=%f,? t:=%f", x, theta, solve_trajectory->flight_time);
     //计算子弹落点高度
     fp32 bullet_drop_z = (float)(bullet_speed * sin(theta) * solve_trajectory->flight_time - 0.5f * GRAVITY * pow(solve_trajectory->flight_time, 2));
     return bullet_drop_z;
 }
+static double calc_bullet_drop(solve_trajectory_t* solve_trajectory, float x, float bullet_speed, float theta, float k1)
+{
+    solve_trajectory->flight_time = (float)((exp(k1 * x) - 1) / (k1 * bullet_speed * cos(theta)));
 
+    // printf("x:= %f, theta:=%f, t:=%f", x, theta, solve_trajectory->flight_time);
+    //计算子弹落点高度
+    double bullet_drop_z = (double)(bullet_speed * sin(theta) * solve_trajectory->flight_time - 0.5f * GRAVITY * pow(solve_trajectory->flight_time, 2));
+    return bullet_drop_z;
+}
 /**
  * @brief 计算弹道落点 -- 完全空气阻力模型 该模型适用于大仰角击打的击打
  * @author yuanluochen
@@ -264,7 +272,7 @@ struct pos{
 double calc_error(const pos & t, solve_trajectory_t & solve_trajectory, fp32 x_offset, fp32 z_offset, float k1){
   double theta = 0;
   double bullet_drop_z =
-      calc_bullet_drop_in_complete_air(
+      calc_bullet_drop(
           &solve_trajectory,
           t.x - (arm_cos_f32(theta) * x_offset - arm_sin_f32(theta) * z_offset),
           solve_trajectory.current_bullet_speed, theta, k1) +
@@ -278,29 +286,41 @@ double calc_error(const pos & t, solve_trajectory_t & solve_trajectory, fp32 x_o
 bool offset_param(std::vector<pos> & measure,
                   solve_trajectory_t & solve_trajectory, fp32 x_offset,
                   fp32 z_offset) {
-  float k1 = 0.09;             //初始估计值        
-  float dx = 0.0001;              
-  float learning_rate = 0.000001; //学习率
-  int max_epochs = 1000000;
+  double k1 = 0.07;             //初始估计值        
+  double dx = 0.0001;              
+  long double learning_rate = 1e-11; //学习率
+  size_t max_epochs = 1000000;
+  int flag = 0;
 
   for (int epoch = 0; epoch < max_epochs; epoch++) {
     double total_gradient = 0;
     double total_error = 0;
-
+    int num = measure.size();
     // 批量计算梯度和误差
     for (const auto &t : measure) {
+      
       double error_plus =
           calc_error(t, solve_trajectory, x_offset, z_offset, k1 + dx);
       double error_current =
           calc_error(t, solve_trajectory, x_offset, z_offset, k1);
       double g_1 = (error_plus - error_current) / dx;
-      total_gradient += g_1;
-      total_error += error_current;
+
+      if (fabs(g_1) < 10e6){
+        //为了防止梯度爆炸
+        total_gradient += g_1;
+        total_error += error_current;
+      }
+      else{
+        flag = 1;
+        num--;
+      }
+
     }
-    double avg_gradient = total_gradient / measure.size();
+    double avg_gradient = total_gradient / num;
     double avg_error = total_error / measure.size();
 
     // 更新参数
+    // learning_rate = learning_rate / );
     k1 -= learning_rate * avg_gradient;
 
 
@@ -308,11 +328,11 @@ bool offset_param(std::vector<pos> & measure,
               << " gradient:=" << avg_gradient << " error:=" << avg_error
               << std::endl;
 
-    if (avg_error >= 1000){
+    if (avg_error >= 10e4){
         break;
     }
     // 收敛判断
-    if (avg_error < 0.001 || fabs(avg_gradient) < 0.005) {
+    if ((avg_error < 0.001 || fabs(avg_gradient) < 0.001) && flag == 0) {
       std::cout << "Converged at epoch " << epoch << std::endl;
       solve_trajectory.k1 = k1;
       return true;
@@ -324,13 +344,13 @@ bool offset_param(std::vector<pos> & measure,
 
 #if DEBUG_IN_COMPUTER
 int main() {
-  solve_trajectory_t s = {.current_bullet_speed = 25, .k1 = 0.3};
+  solve_trajectory_t s = {.current_bullet_speed = 25, .k1 = 0.1};
   fp32 x_offset = 0, z_offset = 0;
   fp32 x = 0, theta = 0.1;
   std::vector<pos> measure{};
-  for (int i = 0; i <= 10; i++){
-    x += 5 + 0.01 * i;
-    fp32 z = calc_bullet_drop_in_complete_air(
+  for (int i = 0; i <= 1000; i++){
+    x += 18 + 0.01 * i;
+    fp32 z = calc_bullet_drop(
           &s,
           x - (arm_cos_f32(theta) * x_offset - arm_sin_f32(theta) * z_offset),
           s.current_bullet_speed, theta) +

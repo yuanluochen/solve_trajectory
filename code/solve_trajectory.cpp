@@ -8,7 +8,10 @@
  * @copyright Copyright (c) 2025
  * 
  */
+#include <cstdio>
+#include <iostream>
 #include <solve_trajectory.h>
+#include <vector>
 
 /**
  * @brief 计算子弹落点
@@ -52,6 +55,46 @@ static float calc_bullet_drop_in_complete_air(solve_trajectory_t* solve_trajecto
         //补偿空气阻力系数 对竖直方向
         //上升过程中 子弹速度方向向量的角度逐渐趋近于0，竖直空气阻力 hat(f_z) = f_z * sin(theta) 会趋近于零 ，水平空气阻力 hat(f_x) = f_x * cos(theta) 会趋近于 f_x ，所以要对竖直空气阻力系数进行补偿
         fp32 k_z = solve_trajectory->k1 * (1 / sin(theta));
+        // 上升段
+        // 初始竖直飞行速度
+        fp32 v_z_0 = bullet_speed * sin(theta);
+        // 计算上升段最大飞行时间
+        fp32 max_flight_up_time = (1 / sqrt(k_z * GRAVITY)) * atan(sqrt(k_z / GRAVITY) * v_z_0);
+        // 判断总飞行时间是否小于上升最大飞行时间
+        if (solve_trajectory->flight_time <= max_flight_up_time)
+        {
+            // 子弹存在上升段
+            bullet_drop_z = (1 / k_z) * log(cos(sqrt(k_z * GRAVITY) * (max_flight_up_time - solve_trajectory->flight_time)) / cos(sqrt(k_z * GRAVITY) * max_flight_up_time));
+        }
+        else
+        {
+            // 超过最大上升飞行时间 -- 存在下降段
+            // 计算最大高度
+            fp32 z_max = (1 / (2 * k_z)) * log(1 + (k_z / GRAVITY) * pow(v_z_0, 2));
+            // 计算下降
+            bullet_drop_z = z_max - 0.5f * GRAVITY * pow((solve_trajectory->flight_time - max_flight_up_time), 2);
+        }
+    }
+    else
+    {
+        bullet_drop_z = (float)(bullet_speed * sin(theta) * solve_trajectory->flight_time - 0.5f * GRAVITY * pow(solve_trajectory->flight_time, 2));
+    }
+
+
+    return bullet_drop_z;
+}
+static float calc_bullet_drop_in_complete_air(solve_trajectory_t* solve_trajectory, float x, float bullet_speed, float theta, float k1)
+{
+    //子弹落点高度
+    fp32 bullet_drop_z = 0;
+    //计算总飞行时间
+    solve_trajectory->flight_time = (float)((exp(k1 * x) - 1) / (k1 * bullet_speed * cos(theta)));
+    // printf("飞行时间%f", solve_trajectory->flight_time);
+    if (theta > 0) 
+    {
+        //补偿空气阻力系数 对竖直方向
+        //上升过程中 子弹速度方向向量的角度逐渐趋近于0，竖直空气阻力 hat(f_z) = f_z * sin(theta) 会趋近于零 ，水平空气阻力 hat(f_x) = f_x * cos(theta) 会趋近于 f_x ，所以要对竖直空气阻力系数进行补偿
+        fp32 k_z = k1 * (1 / sin(theta));
         // 上升段
         // 初始竖直飞行速度
         fp32 v_z_0 = bullet_speed * sin(theta);
@@ -212,14 +255,82 @@ float calc_target_position_pitch_angle(solve_trajectory_t* solve_trajectory, fp3
     return -theta;
 }
 
+struct pos{
+    double x;
+    double z;
+};
+float calc_error(const pos & t, solve_trajectory_t & solve_trajectory, fp32 x_offset, fp32 z_offset, float k1){
+  float theta = 0;
+  float bullet_drop_z =
+      calc_bullet_drop_in_complete_air(
+          &solve_trajectory,
+          t.x - (arm_cos_f32(theta) * x_offset - arm_sin_f32(theta) * z_offset),
+          solve_trajectory.current_bullet_speed, theta, k1) +
+      (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset);
+  
+  // 误差输出
+  fp32 error = pow((t.z - bullet_drop_z), 2);
+  return error;
+}
+
+void offset_param(std::vector<pos> &measure,
+                  solve_trajectory_t &solve_trajectory, fp32 x_offset,
+                  fp32 z_offset) {
+  float k1 = 0.09;             //初始估计值        
+  float dx = 0.0001;              
+  float learning_rate = 0.000001; //学习率
+  int max_epochs = 10000;
+
+  for (int epoch = 0; epoch < max_epochs; epoch++) {
+    double total_gradient = 0;
+    double total_error = 0;
+
+    // 批量计算梯度和误差
+    for (const auto &t : measure) {
+      double error_plus =
+          calc_error(t, solve_trajectory, x_offset, z_offset, k1 + dx);
+      double error_current =
+          calc_error(t, solve_trajectory, x_offset, z_offset, k1);
+      double g_1 = (error_plus - error_current) / dx;
+      total_gradient += g_1;
+      total_error += error_current;
+    }
+
+    double avg_gradient = total_gradient / measure.size();
+    double avg_error = total_error / measure.size();
+
+    // 更新参数
+    k1 -= learning_rate * avg_gradient;
+
+
+    std::cout << "Epoch " << epoch << " k1:=" << k1
+              << " gradient:=" << avg_gradient << " error:=" << avg_error
+              << std::endl;
+
+    // 收敛判断
+    if (fabs(avg_gradient) < 1e-8 || avg_error < 0.005) {
+      std::cout << "Converged at epoch " << epoch << std::endl;
+      break;
+    }
+  }
+  solve_trajectory.k1 = k1;
+}
+
 #if DEBUG_IN_COMPUTER
-int main(){
-  solve_trajectory_t s = {
-    .current_bullet_speed = 25,
-    .k1 = 0.019
-  };
-  for (float i = 1; i < 10; i += 0.5)
-    calc_target_position_pitch_angle(&s, i, -0.1, 0.111, 0, 2);
-  return 0;
+int main() {
+  solve_trajectory_t s = {.current_bullet_speed = 25, .k1 = 0.1};
+  fp32 x_offset = 0, z_offset = 0;
+  fp32 x = 0, theta = 0;
+  std::vector<pos> measure{};
+  for (int i = 0; i <= 10; i++){
+    x += 2  + 0.001 * i;
+    fp32 z = calc_bullet_drop_in_complete_air(
+          &s,
+          x - (arm_cos_f32(theta) * x_offset - arm_sin_f32(theta) * z_offset),
+          s.current_bullet_speed, theta) +
+      (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset);
+    measure.push_back({x, z});
+  }
+  offset_param(measure, s, x_offset, z_offset);
 }
 #endif

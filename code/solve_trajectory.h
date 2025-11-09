@@ -15,7 +15,7 @@
 #if  DEBUG_IN_COMPUTER
 #include <stdio.h>
 #include <stdint.h>
-#include <math.h>
+#include <cmath>
 //接口适配
 typedef float fp32;
 #define arm_sin_f32 sin

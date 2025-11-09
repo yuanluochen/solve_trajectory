@@ -14,6 +14,7 @@
 #include <iostream>
 #include <solve_trajectory.h>
 #include <vector>
+#include <random>
 
 /**
  * @brief 计算子弹落点
@@ -143,12 +144,12 @@ static double calc_bullet_drop_in_complete_air(solve_trajectory_t* solve_traject
  * @param theta 仰角
  * @return 弹道落点
  */
-static float calc_bullet_drop_in_RK4(solve_trajectory_t* solve_trajectory, float x, float y, float bullet_speed, float theta){
+static float calc_bullet_drop_in_RK4(solve_trajectory_t* solve_trajectory, float x, float bullet_speed, float theta){
     // fp32 pitch_offset = 0.0;
     // TODO:可以考虑将迭代起点改为世界坐标系下的枪口位置
     // 初始化
     fp32 cur_x = x;
-    fp32 cur_y = y;
+    fp32 cur_y = 0;
     fp32 p = tan(theta / 180 * PI);
     fp32 v = bullet_speed;
     fp32 u = v / sqrt(1 + pow(p, 2));
@@ -172,6 +173,44 @@ static float calc_bullet_drop_in_RK4(solve_trajectory_t* solve_trajectory, float
 
         fp32 k4_u = -solve_trajectory->k1 * k3_u_sum * sqrt(1 + pow(k3_p_sum, 2));
         fp32 k4_p = -GRAVITY / pow(k3_u_sum, 2);
+
+        u += (delta_x / 6) * (k1_u + 2 * k2_u + 2 * k3_u + k4_u);
+        p += (delta_x / 6) * (k1_p + 2 * k2_p + 2 * k3_p + k4_p);
+
+        cur_x += delta_x;
+        cur_y += p * delta_x;
+    }
+    return cur_y;
+}
+static double calc_bullet_drop_in_RK4(solve_trajectory_t* solve_trajectory, double x, double bullet_speed, double theta, double k1){
+    // fp32 pitch_offset = 0.0;
+    // TODO:可以考虑将迭代起点改为世界坐标系下的枪口位置
+    // 初始化
+    double cur_x = x;
+    double cur_y = 0;
+    double p = tan(theta / 180 * PI);
+    double v = bullet_speed;
+    double u = v / sqrt(1 + pow(p, 2));
+    double delta_x = x / RK_ITER;
+    for (int j = 0; j < RK_ITER; j++)
+    {
+        double k1_u = -k1 * u * sqrt(1 + pow(p, 2));
+        double k1_p = -GRAVITY / pow(u, 2);
+        double k1_u_sum = u + k1_u * (delta_x / 2);
+        double k1_p_sum = p + k1_p * (delta_x / 2);
+
+        double k2_u = -k1 * k1_u_sum * sqrt(1 + pow(k1_p_sum, 2));
+        double k2_p = -GRAVITY / pow(k1_u_sum, 2);
+        double k2_u_sum = u + k2_u * (delta_x / 2);
+        double k2_p_sum = p + k2_p * (delta_x / 2);
+
+        double k3_u = -k1 * k2_u_sum * sqrt(1 + pow(k2_p_sum, 2));
+        double k3_p = -GRAVITY / pow(k2_u_sum, 2);
+        double k3_u_sum = u + k3_u * (delta_x / 2);
+        double k3_p_sum = p + k3_p * (delta_x / 2);
+
+        double k4_u = -k1 * k3_u_sum * sqrt(1 + pow(k3_p_sum, 2));
+        double k4_p = -GRAVITY / pow(k3_u_sum, 2);
 
         u += (delta_x / 6) * (k1_u + 2 * k2_u + 2 * k3_u + k4_u);
         p += (delta_x / 6) * (k1_p + 2 * k2_p + 2 * k3_p + k4_p);
@@ -234,7 +273,6 @@ float calc_target_position_pitch_angle(solve_trajectory_t* solve_trajectory, fp3
                   solve_trajectory,
                   x - (arm_cos_f32(theta) * x_offset -
                        arm_sin_f32(theta) * z_offset),
-                       aim_z - (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset),
                   solve_trajectory->current_bullet_speed, theta) +
               (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset);
         }
@@ -272,7 +310,7 @@ struct pos{
 double calc_error(const pos & t, solve_trajectory_t & solve_trajectory, fp32 x_offset, fp32 z_offset, float k1){
   double theta = 0;
   double bullet_drop_z =
-      calc_bullet_drop(
+      calc_bullet_drop_in_RK4(
           &solve_trajectory,
           t.x - (arm_cos_f32(theta) * x_offset - arm_sin_f32(theta) * z_offset),
           solve_trajectory.current_bullet_speed, theta, k1) +
@@ -286,11 +324,12 @@ double calc_error(const pos & t, solve_trajectory_t & solve_trajectory, fp32 x_o
 bool offset_param(std::vector<pos> & measure,
                   solve_trajectory_t & solve_trajectory, fp32 x_offset,
                   fp32 z_offset) {
-  double k1 = 0.07;             //初始估计值        
+  double k1 = 0.07;             //初始估计值
+  double last_k1 = 0;     
   double dx = 0.0001;              
-  long double learning_rate = 1e-11; //学习率
-  size_t max_epochs = 1000000;
-  int flag = 0;
+  long double learning_rate = 1e-10; //学习率
+  size_t max_epochs = 10000;
+  
 
   for (int epoch = 0; epoch < max_epochs; epoch++) {
     double total_gradient = 0;
@@ -311,7 +350,6 @@ bool offset_param(std::vector<pos> & measure,
         total_error += error_current;
       }
       else{
-        flag = 1;
         num--;
       }
 
@@ -320,7 +358,7 @@ bool offset_param(std::vector<pos> & measure,
     double avg_error = total_error / measure.size();
 
     // 更新参数
-    // learning_rate = learning_rate / );
+    last_k1 = k1;
     k1 -= learning_rate * avg_gradient;
 
 
@@ -328,11 +366,12 @@ bool offset_param(std::vector<pos> & measure,
               << " gradient:=" << avg_gradient << " error:=" << avg_error
               << std::endl;
 
-    if (avg_error >= 10e4){
+    if (avg_error >= 10e7){
         break;
     }
+
     // 收敛判断
-    if ((avg_error < 0.001 || fabs(avg_gradient) < 0.001) && flag == 0) {
+    if (avg_error < 0.001 || fabs(avg_gradient) < 0.001) {
       std::cout << "Converged at epoch " << epoch << std::endl;
       solve_trajectory.k1 = k1;
       return true;
@@ -344,18 +383,23 @@ bool offset_param(std::vector<pos> & measure,
 
 #if DEBUG_IN_COMPUTER
 int main() {
-  solve_trajectory_t s = {.current_bullet_speed = 25, .k1 = 0.1};
+  solve_trajectory_t s = {.current_bullet_speed = 25, .k1 = 0.01};
   fp32 x_offset = 0, z_offset = 0;
   fp32 x = 0, theta = 0.1;
   std::vector<pos> measure{};
+  //生产一点噪声
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::normal_distribution<> dis(0.0, 0.01); // 均值为0，标准差为1的正态分布
+
   for (int i = 0; i <= 1000; i++){
-    x += 18 + 0.01 * i;
-    fp32 z = calc_bullet_drop(
+    x += 1 + 0.01 * i;
+    fp32 z = calc_bullet_drop_in_RK4(
           &s,
           x - (arm_cos_f32(theta) * x_offset - arm_sin_f32(theta) * z_offset),
           s.current_bullet_speed, theta) +
-      (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset);
-    measure.push_back({x, z});
+      (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset) + dis(gen);;
+    measure.push_back({x + dis(gen), z});
   }
   offset_param(measure, s, x_offset, z_offset);
 }

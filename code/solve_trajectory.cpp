@@ -273,7 +273,7 @@ float calc_error(const pos & t, solve_trajectory_t & solve_trajectory, fp32 x_of
   return error;
 }
 
-void offset_param(std::vector<pos> &measure,
+bool offset_param(std::vector<pos> &measure,
                   solve_trajectory_t &solve_trajectory, fp32 x_offset,
                   fp32 z_offset) {
   float k1 = 0.09;             //初始估计值        
@@ -310,10 +310,12 @@ void offset_param(std::vector<pos> &measure,
     // 收敛判断
     if (fabs(avg_gradient) < 1e-8 || avg_error < 0.005) {
       std::cout << "Converged at epoch " << epoch << std::endl;
-      break;
+      solve_trajectory.k1 = k1;
+      return true;
     }
   }
-  solve_trajectory.k1 = k1;
+  std::cout << "offset false" << std::endl;
+  return false;
 }
 
 #if DEBUG_IN_COMPUTER

@@ -15,6 +15,7 @@
 #include <solve_trajectory.h>
 #include <vector>
 #include <random>
+#include<chrono>
 
 /**
  * @brief 计算子弹落点
@@ -320,15 +321,109 @@ double calc_error(const pos & t, solve_trajectory_t & solve_trajectory, fp32 x_o
   double error = pow((t.z - bullet_drop_z), 2);
   return error;
 }
+bool offset_param_adam(std::vector<pos> & measure,
+                      solve_trajectory_t & solve_trajectory, 
+                      fp32 x_offset, fp32 z_offset) {
+    // Adam优化器参数
+    double k1 = -1.01;           // 初始估计值
+    double learning_rate = 0.001; // 学习率
+    double beta1 = 0.9;           // 一阶矩衰减率
+    double beta2 = 0.999;         // 二阶矩衰减率
+    double epsilon = 1e-8;        // 防止除零的小常数
+    
+    // Adam状态变量
+    double m = 0.0;  // 一阶矩估计
+    double v = 0.0;  // 二阶矩估计
+    int t = 0;       // 时间步
+    
+    size_t max_epochs = 50000;
+    double dx = 1e-6;  // 数值微分的步长
 
+    for (int epoch = 0; epoch < max_epochs; epoch++) {
+        t++;  // 增加时间步
+        
+        double total_gradient = 0;
+        double total_error = 0;
+        int valid_samples = 0;
+
+        // 计算当前批次的梯度
+        for (const auto &t_data : measure) {
+            // 使用中心差分法计算梯度
+            double error_plus = calc_error(t_data, solve_trajectory, x_offset, z_offset, k1 + dx);
+            double error_minus = calc_error(t_data, solve_trajectory, x_offset, z_offset, k1 - dx);
+            double g = (error_plus - error_minus) / (2 * dx);
+
+            // 梯度裁剪，防止异常值
+            if (std::isfinite(g) && fabs(g) < 1e6) {
+                total_gradient += g;
+                total_error += calc_error(t_data, solve_trajectory, x_offset, z_offset, k1);
+                valid_samples++;
+            }
+        }
+
+        if (valid_samples == 0) {
+            std::cout << "No valid gradients, stopping" << std::endl;
+            break;
+        }
+
+        double avg_gradient = total_gradient / valid_samples;
+        double avg_error = total_error / measure.size();
+
+        // Adam更新步骤
+        m = beta1 * m + (1 - beta1) * avg_gradient;           // 更新一阶矩估计
+        v = beta2 * v + (1 - beta2) * pow(avg_gradient, 2);   // 更新二阶矩估计
+        
+        // 偏差修正
+        double m_hat = m / (1 - pow(beta1, t));
+        double v_hat = v / (1 - pow(beta2, t));
+        
+        // 参数更新
+        k1 -= learning_rate * m_hat / (sqrt(v_hat) + epsilon);
+
+        // 每100轮输出一次信息
+        if (epoch % 100 == 0) {
+            std::cout << "Epoch " << epoch 
+                      << " k1:=" << k1
+                      << " gradient:=" << avg_gradient
+                      << " m_hat:=" << m_hat
+                      << " v_hat:=" << v_hat
+                      << " error:=" << avg_error
+                      << std::endl;
+        }
+
+        // 收敛判断
+        if (avg_error < 0.005 && fabs(avg_gradient) < 0.5) {
+            std::cout << "Converged at epoch " << epoch << std::endl;
+            solve_trajectory.k1 = k1;
+            return true;
+        }
+
+        // 提前终止条件
+        if (avg_error > 1e10 || !std::isfinite(avg_error) || !std::isfinite(k1)) {
+            std::cout << "Diverged, stopping early at epoch " << epoch << std::endl;
+            break;
+        }
+        
+        // 学习率衰减
+        if (epoch > 1000 && epoch % 1000 == 0) {
+            learning_rate *= 0.99;
+        }
+    }
+    
+    std::cout << "Optimization completed without convergence" << std::endl;
+    solve_trajectory.k1 = k1;  // 保存当前最佳值
+    return false;
+}
 bool offset_param(std::vector<pos> & measure,
                   solve_trajectory_t & solve_trajectory, fp32 x_offset,
                   fp32 z_offset) {
-  double k1 = 0.07;             //初始估计值
+  double k1 = -0.1;             //初始估计值
   double last_k1 = 0;     
   double dx = 0.0001;              
-  long double learning_rate = 1e-10; //学习率
-  size_t max_epochs = 10000;
+  long double learning_rate = 1e-9; //学习率
+  size_t max_epochs = 200000;
+  double avg_gradient = 0;
+  double avg_error = 0; 
   
 
   for (int epoch = 0; epoch < max_epochs; epoch++) {
@@ -341,8 +436,8 @@ bool offset_param(std::vector<pos> & measure,
       double error_plus =
           calc_error(t, solve_trajectory, x_offset, z_offset, k1 + dx);
       double error_current =
-          calc_error(t, solve_trajectory, x_offset, z_offset, k1);
-      double g_1 = (error_plus - error_current) / dx;
+          calc_error(t, solve_trajectory, x_offset, z_offset, k1 - dx);
+      double g_1 = (error_plus - error_current) / (2 * dx);
 
       if (fabs(g_1) < 10e6){
         //为了防止梯度爆炸
@@ -352,10 +447,16 @@ bool offset_param(std::vector<pos> & measure,
       else{
         num--;
       }
-
     }
-    double avg_gradient = total_gradient / num;
-    double avg_error = total_error / measure.size();
+    if (num != 0){
+      avg_gradient = total_gradient / num;
+      avg_error = total_error / measure.size();       
+    }
+    else{
+      avg_gradient = 10e5;
+      avg_error = total_error / measure.size();
+    }
+    
 
     // 更新参数
     last_k1 = k1;
@@ -366,12 +467,9 @@ bool offset_param(std::vector<pos> & measure,
               << " gradient:=" << avg_gradient << " error:=" << avg_error
               << std::endl;
 
-    if (avg_error >= 10e7){
-        break;
-    }
 
     // 收敛判断
-    if (avg_error < 0.001 || fabs(avg_gradient) < 0.001) {
+    if (avg_error < 0.005 || fabs(avg_gradient) < 5) {
       std::cout << "Converged at epoch " << epoch << std::endl;
       solve_trajectory.k1 = k1;
       return true;
@@ -381,9 +479,12 @@ bool offset_param(std::vector<pos> & measure,
   return false;
 }
 
+
+using namespace std::chrono;
+
 #if DEBUG_IN_COMPUTER
 int main() {
-  solve_trajectory_t s = {.current_bullet_speed = 25, .k1 = 0.01};
+  solve_trajectory_t s = {.current_bullet_speed = 25, .k1 = 0.1};
   fp32 x_offset = 0, z_offset = 0;
   fp32 x = 0, theta = 0.1;
   std::vector<pos> measure{};
@@ -392,8 +493,8 @@ int main() {
   std::mt19937 gen(rd());
   std::normal_distribution<> dis(0.0, 0.01); // 均值为0，标准差为1的正态分布
 
-  for (int i = 0; i <= 1000; i++){
-    x += 1 + 0.01 * i;
+  for (int i = 0; i <= 100; i++){
+    x += 1 + 0.05 * i;
     fp32 z = calc_bullet_drop_in_RK4(
           &s,
           x - (arm_cos_f32(theta) * x_offset - arm_sin_f32(theta) * z_offset),
@@ -401,6 +502,11 @@ int main() {
       (arm_sin_f32(theta) * x_offset + arm_cos_f32(theta) * z_offset) + dis(gen);;
     measure.push_back({x + dis(gen), z});
   }
-  offset_param(measure, s, x_offset, z_offset);
+  auto start = system_clock::now();
+  offset_param_adam(measure, s, x_offset, z_offset);
+  auto end = system_clock::now();
+  auto duration = duration_cast<microseconds>(end - start);
+  std::cout << double(duration.count()) * microseconds::period::num / microseconds::period::den << std::endl;
+  return 0;
 }
 #endif
